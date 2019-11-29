@@ -1,5 +1,11 @@
 import java.util.Iterator;
 import java.util.Map;
+import java.io.BufferedWriter;
+import java.io.Writer;
+import java.io.FileWriter;
+import java.io.PrintWriter;
+import java.io.IOException;
+
 
 import soot.Body;
 import soot.BodyTransformer;
@@ -18,6 +24,8 @@ import soot.jimple.InvokeStmt;
 import soot.jimple.Jimple;
 import soot.jimple.StringConstant;
 import soot.options.Options;
+import soot.toolkits.graph.BriefUnitGraph;
+import soot.toolkits.graph.UnitGraph;
 
 
 public class AndroidInstrument {
@@ -38,6 +46,20 @@ public class AndroidInstrument {
 
 			@Override
 			protected void internalTransform(final Body b, String phaseName, @SuppressWarnings("rawtypes") Map options) {
+				UnitGraph graph = new BriefUnitGraph(b);
+
+//				try (PrintWriter out = new PrintWriter("BriefUnitGraph.dump")){
+				try (FileWriter fileWriter = new FileWriter("BriefUnitGraph.dump",true)){
+				    PrintWriter out = new PrintWriter(fileWriter);
+					out.print(graph.toString());
+					out.flush();
+					out.close();
+					System.out.println(graph.toString());
+
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+								
 				final PatchingChain<Unit> units = b.getUnits();
 				
 				//important to use snapshotIterator here
