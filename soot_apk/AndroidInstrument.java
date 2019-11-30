@@ -54,7 +54,7 @@ public class AndroidInstrument {
 					out.print(graph.toString());
 					out.flush();
 					out.close();
-					System.out.println(graph.toString());
+					//System.out.println(graph.toString());
 
 				} catch (Exception e) {
 					e.printStackTrace();
@@ -62,9 +62,25 @@ public class AndroidInstrument {
 								
 				final PatchingChain<Unit> units = b.getUnits();
 				
+				Unit tmpu = null;
+				
 				//important to use snapshotIterator here
 				for(Iterator<Unit> iter = units.snapshotIterator(); iter.hasNext();) {
 					final Unit u = iter.next();
+					if (u.toString().matches("(.*)writeRXCharacteristic(.*)")) {
+						System.out.println(u.toString());
+						System.out.println("******");
+						tmpu = u;
+						while (true) {
+							try {
+								tmpu = graph.getPredsOf(tmpu).get(0);
+								System.out.println(tmpu.toString());
+							}
+							catch (Exception e) { 
+								break;
+							}
+						}
+					}	
 					u.apply(new AbstractStmtSwitch() {
 						
 						public void caseInvokeStmt(InvokeStmt stmt) {
@@ -72,7 +88,7 @@ public class AndroidInstrument {
 
 							// inserting code to print APIs
 							if (!invokeExpr.getMethod().getDeclaringClass().isApplicationClass())
-								System.out.println(invokeExpr.getMethod().toString());
+								//System.out.println(invokeExpr.getMethod().toString());
 
 							if(invokeExpr.getMethod().getName().equals("onDraw")) {
 
