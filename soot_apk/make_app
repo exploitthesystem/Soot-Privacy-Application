@@ -1,0 +1,11 @@
+#!/bin/bash
+
+echo "Removing old sootOutput folder and BriefUnitGraph.dump ---------"
+rm -rf sootOutput
+rm BriefUnitGraph.dump
+
+echo "Compiling ------------------------------"
+javac -cp sootclasses-trunk-jar-with-dependencies.jar AndroidInstrument.java
+
+echo "Executing ------------------------------"
+java -cp sootclasses-trunk-jar-with-dependencies.jar:. AndroidInstrument -android-jars ./ -process-dir ./nRF_UART.apk

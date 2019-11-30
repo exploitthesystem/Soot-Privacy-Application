@@ -42,53 +42,82 @@ public class AndroidInstrument {
 		Scene.v().addBasicClass("java.io.PrintStream",SootClass.SIGNATURES);
         Scene.v().addBasicClass("java.lang.System",SootClass.SIGNATURES);
 
+        // resolve classes for the master list we want to add
+        Scene.v().addBasicClass("java.util.Set",SootClass.SIGNATURES);
+
+
+        // create a new class to store global tag list
+        //Scene.v().addBasicClass()
+
         PackManager.v().getPack("jtp").add(new Transform("jtp.myInstrumenter", new BodyTransformer() {
 
 			@Override
 			protected void internalTransform(final Body b, String phaseName, @SuppressWarnings("rawtypes") Map options) {
+			
+				// Dump the BriefUnitGraph to a file
 				UnitGraph graph = new BriefUnitGraph(b);
+				System.out.println(graph.getHeads().toString());
 
-//				try (PrintWriter out = new PrintWriter("BriefUnitGraph.dump")){
 				try (FileWriter fileWriter = new FileWriter("BriefUnitGraph.dump",true)){
 				    PrintWriter out = new PrintWriter(fileWriter);
 					out.print(graph.toString());
-					out.flush();
 					out.close();
-					//System.out.println(graph.toString());
-
 				} catch (Exception e) {
 					e.printStackTrace();
 				}
 								
 				final PatchingChain<Unit> units = b.getUnits();
+
+				// add path list objects to beginning of chain
+				units.addFirst(Jimple.v().newAssignStmt( 
+						                      tmpSetRef, Jimple.v().newStaticFieldRef( 
+						                      Scene.v().getField("<java.lang.System: java.io.PrintStream out>").makeRef())));
+				
 				
 				Unit tmpu = null;
 				
+
+				//TODO: need to find entry point for application (usually MainActivity)
+				// except we can generalize and find entrypoint this way:
+				// https://github.com/0-14N/soot-infoflow-android/blob/master/src/soot/jimple/infoflow/android/manifest/ProcessManifest.java
+				// in entry point, need to insert "forbidden" list as a static
+				// in entry point, need to declare static variable in (MainActivity.onCreate()) to keep track of accessed "forbidden path" units
+				// 
+				
 				//important to use snapshotIterator here
 				for(Iterator<Unit> iter = units.snapshotIterator(); iter.hasNext();) {
+
 					final Unit u = iter.next();
-					if (u.toString().matches("(.*)writeRXCharacteristic(.*)")) {
+
+					// represent the private resource we want to monitor and
+					// (except we care about when it's accessed rather than created)
+					String iface_unit_pattern = "EditText";
+					// the iterface where this information could leave the device
+					String priv_unit_pattern = "writeRXCharacteristic";
+
+					// get all the preds of priv_unit_pattern until encounter iface_unit_pattern
+					// insert tags BEFORE each unit, except last unit, which should get the check
+					if (u.toString().matches("(.*)"+priv_unit_pattern+"(.*)")) {
 						System.out.println(u.toString());
 						System.out.println("******");
 						tmpu = u;
-						while (true) {
+						do {
 							try {
 								tmpu = graph.getPredsOf(tmpu).get(0);
 								System.out.println(tmpu.toString());
+								// this is where the tag should be added
 							}
 							catch (Exception e) { 
 								break;
 							}
-						}
+						} while (!(tmpu.toString().matches("(.*)"+iface_unit_pattern+"(.*)")));
 					}	
+
 					u.apply(new AbstractStmtSwitch() {
 						
 						public void caseInvokeStmt(InvokeStmt stmt) {
 							InvokeExpr invokeExpr = stmt.getInvokeExpr();
 
-							// inserting code to print APIs
-							if (!invokeExpr.getMethod().getDeclaringClass().isApplicationClass())
-								//System.out.println(invokeExpr.getMethod().toString());
 
 							if(invokeExpr.getMethod().getName().equals("onDraw")) {
 
@@ -123,6 +152,13 @@ public class AndroidInstrument {
 		
 		soot.Main.main(args);
 	}
+
+    private static Local addTmpSetRef(Body body)
+    {
+        Local tmpSetRef = Jimple.v().newLocal("tmpSetRef", RefType.v("java.util.Set"));
+        body.getLocals().add(tmpSetRef);
+        return tmpSetRef;
+    }
 
     private static Local addTmpRef(Body body)
     {
