@@ -1,4 +1,7 @@
 
+# best to run ./make_app 
+
+
 # compile the java instrument driver:
 javac -cp sootclasses-trunk-jar-with-dependencies.jar AndroidInstrument.java
 

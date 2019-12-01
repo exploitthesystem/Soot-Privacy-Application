@@ -5,6 +5,7 @@ import java.io.Writer;
 import java.io.FileWriter;
 import java.io.PrintWriter;
 import java.io.IOException;
+import java.util.Set;
 
 
 import soot.Body;
@@ -53,10 +54,26 @@ public class AndroidInstrument {
 
 			@Override
 			protected void internalTransform(final Body b, String phaseName, @SuppressWarnings("rawtypes") Map options) {
-			
+								
+				final PatchingChain<Unit> units = b.getUnits();
+
+
+				Local tmpSetRef = addTmpSetRef(b); // add the local (defined further down) into the body
+
+				// add path list objectto the chain
+				// tried addLast, that didn't work, now trying this
+				units.add(Jimple.v().newAssignStmt( 
+						tmpSetRef, Jimple.v().newNewExpr(RefType.v("java.util.Set")))); 
+
+				
+				Unit tmpu = null;
+
+
+				// Moved this down here so we can get the dump after tmpSetRef was inserted into the chain
+				//    but still problems with it inserting many copies, maybe something to do with not using
+				//    a snapshot iterator?
 				// Dump the BriefUnitGraph to a file
 				UnitGraph graph = new BriefUnitGraph(b);
-				System.out.println(graph.getHeads().toString());
 
 				try (FileWriter fileWriter = new FileWriter("BriefUnitGraph.dump",true)){
 				    PrintWriter out = new PrintWriter(fileWriter);
@@ -65,18 +82,7 @@ public class AndroidInstrument {
 				} catch (Exception e) {
 					e.printStackTrace();
 				}
-								
-				final PatchingChain<Unit> units = b.getUnits();
-
-				// add path list objects to beginning of chain
-				units.addFirst(Jimple.v().newAssignStmt( 
-						                      tmpSetRef, Jimple.v().newStaticFieldRef( 
-						                      Scene.v().getField("<java.lang.System: java.io.PrintStream out>").makeRef())));
 				
-				
-				Unit tmpu = null;
-				
-
 				//TODO: need to find entry point for application (usually MainActivity)
 				// except we can generalize and find entrypoint this way:
 				// https://github.com/0-14N/soot-infoflow-android/blob/master/src/soot/jimple/infoflow/android/manifest/ProcessManifest.java
@@ -99,7 +105,7 @@ public class AndroidInstrument {
 					// insert tags BEFORE each unit, except last unit, which should get the check
 					if (u.toString().matches("(.*)"+priv_unit_pattern+"(.*)")) {
 						System.out.println(u.toString());
-						System.out.println("******");
+						System.out.println("******Printing Path*******");
 						tmpu = u;
 						do {
 							try {
@@ -111,6 +117,8 @@ public class AndroidInstrument {
 								break;
 							}
 						} while (!(tmpu.toString().matches("(.*)"+iface_unit_pattern+"(.*)")));
+						System.out.println("******Done*******");
+
 					}	
 
 					u.apply(new AbstractStmtSwitch() {
@@ -155,7 +163,7 @@ public class AndroidInstrument {
 
     private static Local addTmpSetRef(Body body)
     {
-        Local tmpSetRef = Jimple.v().newLocal("tmpSetRef", RefType.v("java.util.Set"));
+        Local tmpSetRef = Jimple.v().newLocal("$pathSet", RefType.v("java.util.Set"));
         body.getLocals().add(tmpSetRef);
         return tmpSetRef;
     }

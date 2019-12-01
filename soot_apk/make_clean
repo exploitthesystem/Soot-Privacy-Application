@@ -1,0 +1,6 @@
+#!/bin/bash
+
+rm -rf sootOutput
+rm BriefUnitGraph.dump
+rm *.class*
+
