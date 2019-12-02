@@ -6,7 +6,9 @@ import java.io.FileWriter;
 import java.io.PrintWriter;
 import java.io.IOException;
 import java.util.Set;
+import java.util.UUID;
 
+//import sun.misc.Unsafe;
 
 import soot.Body;
 import soot.BodyTransformer;
@@ -46,6 +48,8 @@ public class AndroidInstrument {
         // resolve classes for the master list we want to add
         Scene.v().addBasicClass("java.util.Set",SootClass.SIGNATURES);
 
+	
+
 
         // create a new class to store global tag list
         //Scene.v().addBasicClass()
@@ -56,17 +60,16 @@ public class AndroidInstrument {
 			protected void internalTransform(final Body b, String phaseName, @SuppressWarnings("rawtypes") Map options) {
 								
 				final PatchingChain<Unit> units = b.getUnits();
-
+				Unit tmpu = null;
 
 				Local tmpSetRef = addTmpSetRef(b); // add the local (defined further down) into the body
 
 				// add path list objectto the chain
-				// tried addLast, that didn't work, now trying this
-				units.add(Jimple.v().newAssignStmt( 
-						tmpSetRef, Jimple.v().newNewExpr(RefType.v("java.util.Set")))); 
+				// tried addLast, that didn't work, now trying this, still doesn't work right
+				//units.add(Jimple.v().newAssignStmt( 
+				//		tmpSetRef, Jimple.v().newNewExpr(RefType.v("java.util.Set")))); 
 
 				
-				Unit tmpu = null;
 
 
 				// Moved this down here so we can get the dump after tmpSetRef was inserted into the chain
@@ -90,10 +93,16 @@ public class AndroidInstrument {
 				// in entry point, need to declare static variable in (MainActivity.onCreate()) to keep track of accessed "forbidden path" units
 				// 
 				
+
 				//important to use snapshotIterator here
 				for(Iterator<Unit> iter = units.snapshotIterator(); iter.hasNext();) {
 
 					final Unit u = iter.next();
+
+					// Locals used for inserting printlns
+					Local tmpRef = addTmpRef(b);
+					Local tmpString = addTmpString(b);
+
 
 					// represent the private resource we want to monitor and
 					// (except we care about when it's accessed rather than created)
@@ -104,11 +113,13 @@ public class AndroidInstrument {
 					// get all the preds of priv_unit_pattern until encounter iface_unit_pattern
 					// insert tags BEFORE each unit, except last unit, which should get the check
 					if (u.toString().matches("(.*)"+priv_unit_pattern+"(.*)")) {
-						System.out.println(u.toString());
 						System.out.println("******Printing Path*******");
+						System.out.println(u.toString());
 						tmpu = u;
 						do {
 							try {
+								// insert tag here
+								insertPrintTag(b,units,tmpu);
 								tmpu = graph.getPredsOf(tmpu).get(0);
 								System.out.println(tmpu.toString());
 								// this is where the tag should be added
@@ -120,46 +131,41 @@ public class AndroidInstrument {
 						System.out.println("******Done*******");
 
 					}	
-
-					u.apply(new AbstractStmtSwitch() {
-						
-						public void caseInvokeStmt(InvokeStmt stmt) {
-							InvokeExpr invokeExpr = stmt.getInvokeExpr();
-
-
-							if(invokeExpr.getMethod().getName().equals("onDraw")) {
-
-								Local tmpRef = addTmpRef(b);
-								Local tmpString = addTmpString(b);
-								
-								  // insert "tmpRef = java.lang.System.out;" 
-						        units.insertBefore(Jimple.v().newAssignStmt( 
-						                      tmpRef, Jimple.v().newStaticFieldRef( 
-						                      Scene.v().getField("<java.lang.System: java.io.PrintStream out>").makeRef())), u);
-
-						        // insert "tmpLong = 'HELLO';" 
-						        units.insertBefore(Jimple.v().newAssignStmt(tmpString, 
-						                      StringConstant.v("HELLO")), u);
-						        
-						        // insert "tmpRef.println(tmpString);" 
-						        SootMethod toCall = Scene.v().getSootClass("java.io.PrintStream").getMethod("void println(java.lang.String)");                    
-						        units.insertBefore(Jimple.v().newInvokeStmt(
-						                      Jimple.v().newVirtualInvokeExpr(tmpRef, toCall.makeRef(), tmpString)), u);
-						        
-						        //check that we did not mess up the Jimple
-						        b.validate();
-							}
-						}
-						
-					});
 				}
-			}
+
+	        	//check that we did not mess up the Jimple
+	       		b.validate();
+
+			} //internalTransform
 
 
 		}));
+
 		
 		soot.Main.main(args);
 	}
+
+	private static void insertPrintTag(Body b, PatchingChain<Unit> units, Unit u)
+    {
+    	//generate a UUID to be used as a tag
+    	String uniqueID = UUID.randomUUID().toString();
+    	Local tmpRef = addTmpRef(b);
+		Local tmpString = addTmpString(b);
+
+        units.insertBefore(Jimple.v().newAssignStmt( 
+                      tmpRef, Jimple.v().newStaticFieldRef( 
+                      Scene.v().getField("<java.lang.System: java.io.PrintStream out>").makeRef())), u);
+
+        // insert "tmpLong = 'HELLO';" 
+        units.insertBefore(Jimple.v().newAssignStmt(tmpString, 
+                      StringConstant.v(uniqueID)), u);
+        
+        // insert "tmpRef.println(tmpString);" 
+        SootMethod toCall = Scene.v().getSootClass("java.io.PrintStream").getMethod("void println(java.lang.String)");                    
+        units.insertBefore(Jimple.v().newInvokeStmt(
+                      Jimple.v().newVirtualInvokeExpr(tmpRef, toCall.makeRef(), tmpString)), u);
+        
+    }
 
     private static Local addTmpSetRef(Body body)
     {
